@@ -354,6 +354,122 @@ body {
   border-color: #00d4aa;
 }
 
+.auto-calc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-calc-label {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.auto-calc-content {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.auto-calc-value {
+  font-size: 1rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #00d4aa 0%, #00b4d8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.auto-calc-unit {
+  color: #00d4aa;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.auto-calc-badge {
+  font-size: 0.65rem;
+  color: #00d4aa;
+  opacity: 0.6;
+  margin-top: 2px;
+}
+
+.auto-calc-field.no-data .auto-calc-value {
+  background: linear-gradient(135deg, #888 0%, #666 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.auto-calc-value.no-data-text {
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+
+.input-with-unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input-with-unit input {
+  flex: 1;
+}
+
+.input-unit {
+  color: #888;
+  font-size: 0.85rem;
+  min-width: 40px;
+}
+
+.stock-price-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.unlisted-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
+.unlisted-checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: #00d4aa;
+}
+
+.year-period-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.year-period-input input[type="month"] {
+  padding: 10px 12px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.9rem;
+  flex: 1;
+}
+
+.year-period-input input[type="month"]:focus {
+  outline: none;
+  border-color: #00d4aa;
+}
+
+.year-period-suffix {
+  color: #888;
+  font-size: 0.9rem;
+}
+
 .form-group textarea {
   min-height: 80px;
   resize: vertical;
