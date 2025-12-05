@@ -240,7 +240,8 @@ body {
 }
 
 .financials-table {
-  width: 100%;
+  table-layout: fixed;
+  width: auto;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
@@ -278,13 +279,21 @@ body {
   opacity: 1;
 }
 
+.financials-table thead th:not(.sticky-col) {
+  width: 100px;
+  min-width: 100px;
+  max-width: 100px;
+}
+
 .financials-table .sticky-col {
   position: sticky;
   left: 0;
   background: rgba(20, 30, 40, 0.98);
   text-align: left;
   font-weight: 500;
-  min-width: 180px;
+  width: 160px;
+  min-width: 160px;
+  max-width: 160px;
   z-index: 1;
 }
 
