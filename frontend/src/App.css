@@ -437,6 +437,26 @@ body {
   gap: 12px;
 }
 
+.company-title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.edit-company-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background 0.2s;
+}
+
+.edit-company-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .financials-table .sticky-col {
   position: sticky;
   left: 0;

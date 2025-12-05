@@ -16,6 +16,10 @@ function App() {
   // 新規企業フォーム
   const [showCompanyForm, setShowCompanyForm] = useState(false);
   const [companyForm, setCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '' });
+  
+  // 企業編集フォーム
+  const [showEditCompanyForm, setShowEditCompanyForm] = useState(false);
+  const [editCompanyForm, setEditCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '' });
 
   useEffect(() => {
     loadCompanies();
@@ -70,6 +74,34 @@ function App() {
     }
   }
 
+  function handleOpenEditCompany() {
+    if (!selectedCompany) return;
+    setEditCompanyForm({
+      name: selectedCompany.name || '',
+      ticker: selectedCompany.ticker || '',
+      sector: selectedCompany.sector || '',
+      market: selectedCompany.market || '',
+      description: selectedCompany.description || '',
+    });
+    setShowEditCompanyForm(true);
+  }
+
+  async function handleUpdateCompany(e: React.FormEvent) {
+    e.preventDefault();
+    if (!selectedCompany?.id) return;
+    try {
+      await api.updateCompany(selectedCompany.id, editCompanyForm);
+      showToast('企業情報を更新しました', 'success');
+      setShowEditCompanyForm(false);
+      // 更新後の情報を再取得
+      const updated = await api.getCompany(selectedCompany.id);
+      setSelectedCompany(updated);
+      loadCompanies();
+    } catch (error) {
+      showToast('更新に失敗しました', 'error');
+    }
+  }
+
   function showToast(message: string, type: 'success' | 'error') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -107,6 +139,7 @@ function App() {
             company={selectedCompany}
             onBack={() => setView('list')}
             onUpdate={(updated) => setSelectedCompany(updated)}
+            onEditCompany={handleOpenEditCompany}
             showToast={showToast}
           />
         )}
@@ -166,6 +199,66 @@ function App() {
                   キャンセル
                 </button>
                 <button type="submit" className="btn-primary">登録</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 企業編集モーダル */}
+      {showEditCompanyForm && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <h2>企業情報を編集</h2>
+            <form onSubmit={handleUpdateCompany}>
+              <div className="form-group">
+                <label>企業名 *</label>
+                <input
+                  type="text"
+                  value={editCompanyForm.name}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, name: e.target.value })}
+                  required
+                />
+              </div>
+              <div className="form-group">
+                <label>銘柄コード</label>
+                <input
+                  type="text"
+                  value={editCompanyForm.ticker}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, ticker: e.target.value })}
+                  placeholder="例: 7203"
+                />
+              </div>
+              <div className="form-group">
+                <label>セクター</label>
+                <input
+                  type="text"
+                  value={editCompanyForm.sector}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, sector: e.target.value })}
+                  placeholder="例: 自動車"
+                />
+              </div>
+              <div className="form-group">
+                <label>市場</label>
+                <input
+                  type="text"
+                  value={editCompanyForm.market}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, market: e.target.value })}
+                  placeholder="例: 東証プライム"
+                />
+              </div>
+              <div className="form-group">
+                <label>概要</label>
+                <textarea
+                  value={editCompanyForm.description}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, description: e.target.value })}
+                />
+              </div>
+              <div className="modal-actions">
+                <button type="button" className="btn-secondary" onClick={() => setShowEditCompanyForm(false)}>
+                  キャンセル
+                </button>
+                <button type="submit" className="btn-primary">更新</button>
               </div>
             </form>
           </div>
@@ -429,11 +522,13 @@ function CompanyDetail({
   company,
   onBack,
   onUpdate,
+  onEditCompany,
   showToast,
 }: {
   company: CompanyWithFinancials;
   onBack: () => void;
   onUpdate: (company: CompanyWithFinancials) => void;
+  onEditCompany: () => void;
   showToast: (message: string, type: 'success' | 'error') => void;
 }) {
   const [localFinancials, setLocalFinancials] = useState<FinancialData[]>(
@@ -517,7 +612,12 @@ function CompanyDetail({
       
       <div className="company-header">
         <div>
-          <h2>{company.name}</h2>
+          <div className="company-title-row">
+            <h2>{company.name}</h2>
+            <button className="edit-company-btn" onClick={onEditCompany} title="企業情報を編集">
+              ✏️
+            </button>
+          </div>
           <div className="company-meta">
             {company.ticker && <span className="ticker">{company.ticker}</span>}
             {company.sector && <span className="tag">{company.sector}</span>}
