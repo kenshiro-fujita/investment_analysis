@@ -551,7 +551,7 @@ const calculationFormulas: Record<string, string> = {
   current_theoretical_stock_price: '現状事業価値 + 現状資産価値',
   margin_of_safety_current: '現状理論株価 - 期末株価',
   safety_ratio_current: '安全域 ÷ 期末株価 × 100',
-  free_cash_flow: '営業CF - 投資CF',
+  free_cash_flow: '営業CF + 投資CF',
   roe: '当期純利益 ÷ 純資産 × 100',
   roa: '当期純利益 ÷ 総資産 × 100',
   roic: '営業利益 × (1 - 実効税率) ÷ (有利子負債 + 株主資本) × 100',
@@ -639,9 +639,9 @@ function calculateAutoFields(data: FinancialData, allFinancials?: FinancialData[
     updated.safety_ratio_current = undefined;
   }
   
-  // FCF
+  // FCF = 営業CF + 投資CF
   if (data.operating_cf !== undefined && data.investing_cf !== undefined) {
-    updated.free_cash_flow = roundToTwo(data.operating_cf - data.investing_cf);
+    updated.free_cash_flow = roundToTwo(data.operating_cf + data.investing_cf);
   } else {
     updated.free_cash_flow = undefined;
   }
@@ -897,7 +897,17 @@ function CompanyDetail({
     }
   };
 
+  // 入力中のフィールドを追跡するstate
+  const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: string } | null>(null);
+
   const handleCellChange = useCallback((financialId: string, key: string, value: string) => {
+    // 入力中の値を追跡（ピリオドで終わる場合など、parseFloatで失われる情報を保持）
+    if (value.endsWith('.') || value.endsWith('-') || value === '-' || value.match(/\.\d*0$/)) {
+      setEditingCell({ id: financialId, key, value });
+    } else {
+      setEditingCell(null);
+    }
+
     setLocalFinancials(prev => {
       const updated = prev.map(f => {
         if (f.id !== financialId) return f;
@@ -909,7 +919,9 @@ function CompanyDetail({
           // 非上場チェックボックス
           newData = { ...f, stock_price_end: value === 'true' ? -1 : undefined };
         } else {
-          newData = { ...f, [key]: value === '' ? undefined : parseFloat(value) };
+          // 入力中は文字列のまま保持し、フォーカスが外れた時にparseFloat
+          const numValue = value === '' ? undefined : parseFloat(value);
+          newData = { ...f, [key]: isNaN(numValue as number) ? undefined : numValue };
         }
         return newData;
       });
@@ -1049,8 +1061,8 @@ function CompanyDetail({
                             <input
                               type="text"
                               className="cell-input"
-                              value={formatInputValue(f.stock_price_end)}
-                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/,/g, ''))}
+                              value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f.stock_price_end)}
+                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
                             />
                           )}
                         </div>
@@ -1064,8 +1076,8 @@ function CompanyDetail({
                         <input
                           type="text"
                           className="cell-input"
-                          value={formatInputValue(f[field.key as keyof FinancialData])}
-                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/,/g, ''))}
+                          value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f[field.key as keyof FinancialData])}
+                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
                         />
                       )}
                     </td>
