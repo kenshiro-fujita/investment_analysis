@@ -74,6 +74,7 @@ export interface Company {
   sector?: string;
   market?: string;
   description?: string;
+  financial_analysis?: string;
   created_at?: string;
   updated_at?: string;
 }

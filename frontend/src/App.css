@@ -332,6 +332,20 @@ body {
   color: #00d4aa;
 }
 
+.roic-highlight .sticky-col {
+  font-weight: 900 !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.roic-highlight .auto-value-number {
+  font-weight: 900 !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  -webkit-text-fill-color: #00d4aa !important;
+  background: none !important;
+}
+
 .auto-value {
   display: flex;
   flex-direction: column;
@@ -481,6 +495,28 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.financial-analysis {
+  margin-top: 16px;
+  padding: 16px;
+  background: rgba(0, 212, 170, 0.1);
+  border-radius: 8px;
+  border-left: 4px solid #00d4aa;
+}
+
+.financial-analysis h4 {
+  margin: 0 0 8px 0;
+  font-size: 0.9rem;
+  color: #00d4aa;
+}
+
+.financial-analysis p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #ccc;
+  white-space: pre-wrap;
+  line-height: 1.6;
 }
 
 .edit-company-btn {

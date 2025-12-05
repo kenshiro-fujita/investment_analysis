@@ -15,11 +15,11 @@ function App() {
 
   // 新規企業フォーム
   const [showCompanyForm, setShowCompanyForm] = useState(false);
-  const [companyForm, setCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '' });
+  const [companyForm, setCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '', financial_analysis: '' });
   
   // 企業編集フォーム
   const [showEditCompanyForm, setShowEditCompanyForm] = useState(false);
-  const [editCompanyForm, setEditCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '' });
+  const [editCompanyForm, setEditCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '', financial_analysis: '' });
 
   useEffect(() => {
     loadCompanies();
@@ -52,7 +52,7 @@ function App() {
       await api.createCompany(companyForm);
       showToast('企業を登録しました', 'success');
       setShowCompanyForm(false);
-      setCompanyForm({ name: '', ticker: '', sector: '', market: '', description: '' });
+      setCompanyForm({ name: '', ticker: '', sector: '', market: '', description: '', financial_analysis: '' });
       loadCompanies();
     } catch (error) {
       showToast('企業の登録に失敗しました', 'error');
@@ -82,6 +82,7 @@ function App() {
       sector: selectedCompany.sector || '',
       market: selectedCompany.market || '',
       description: selectedCompany.description || '',
+      financial_analysis: selectedCompany.financial_analysis || '',
     });
     setShowEditCompanyForm(true);
   }
@@ -194,6 +195,14 @@ function App() {
                   onChange={(e) => setCompanyForm({ ...companyForm, description: e.target.value })}
                 />
               </div>
+              <div className="form-group">
+                <label>財務分析結果</label>
+                <textarea
+                  value={companyForm.financial_analysis}
+                  onChange={(e) => setCompanyForm({ ...companyForm, financial_analysis: e.target.value })}
+                  rows={5}
+                />
+              </div>
               <div className="modal-actions">
                 <button type="button" className="btn-secondary" onClick={() => setShowCompanyForm(false)}>
                   キャンセル
@@ -252,6 +261,14 @@ function App() {
                 <textarea
                   value={editCompanyForm.description}
                   onChange={(e) => setEditCompanyForm({ ...editCompanyForm, description: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>財務分析結果</label>
+                <textarea
+                  value={editCompanyForm.financial_analysis}
+                  onChange={(e) => setEditCompanyForm({ ...editCompanyForm, financial_analysis: e.target.value })}
+                  rows={5}
                 />
               </div>
               <div className="modal-actions">
@@ -337,6 +354,7 @@ const autoCalculatedFields = [
   'roa',
   'roic',
   'roic_moving_avg_calc',
+  'roic_moving_avg',
   'interest_rate',
   'equity_cost',
   'theoretical_discount_rate',
@@ -361,6 +379,7 @@ const calculationFormulas: Record<string, string> = {
   roa: '当期純利益 ÷ 総資産 × 100',
   roic: '営業利益 × (1 - 実効税率) ÷ (有利子負債 + 株主資本) × 100',
   roic_moving_avg_calc: '固定値: 76.80%',
+  roic_moving_avg: 'Σ(営業利益×移動平均計算用) ÷ Σ(有利子負債+株主資本) × 100 [過去最大5年]',
   interest_rate: '支払利息 ÷ 有利子負債 × 100',
   equity_cost: '0.04 + β値 × 5.46',
   theoretical_discount_rate: '(1 - 自己資本比率) × 負債調達コスト + 自己資本比率 × 資本調達コスト',
@@ -376,7 +395,7 @@ function roundToTwo(num: number): number {
 }
 
 // 自動計算ロジック
-function calculateAutoFields(data: FinancialData): FinancialData {
+function calculateAutoFields(data: FinancialData, allFinancials?: FinancialData[]): FinancialData {
   const updated = { ...data };
   
   // 自己資本比率 = 純資産 ÷ 総資産 × 100
@@ -482,6 +501,54 @@ function calculateAutoFields(data: FinancialData): FinancialData {
   // 移動平均計算用
   updated.roic_moving_avg_calc = 76.80;
   
+  // 移動平均ROIC（過去最大5年間）
+  if (allFinancials && data.year_period) {
+    // 年期でソート（古い順）
+    const sortedAll = [...allFinancials].sort((a, b) => a.year_period.localeCompare(b.year_period));
+    
+    // 現在のデータのインデックスを取得
+    const currentIndex = sortedAll.findIndex(f => f.year_period === data.year_period);
+    
+    if (currentIndex >= 0) {
+      // 過去最大5年分のデータを取得（自分を含む）
+      const startIndex = Math.max(0, currentIndex - 4);
+      const targetData = sortedAll.slice(startIndex, currentIndex + 1);
+      
+      // 有効なデータのみでフィルタリング
+      const validData = targetData.filter(f => 
+        f.operating_income !== undefined &&
+        f.roic_moving_avg_calc !== undefined &&
+        f.interest_bearing_debt !== undefined &&
+        f.shareholders_equity !== undefined
+      );
+      
+      if (validData.length > 0) {
+        // 分子: Σ(営業利益 × 移動平均計算用)
+        // 移動平均計算用は%なので/100して使う
+        const numerator = validData.reduce((sum, f) => {
+          return sum + (f.operating_income! * (f.roic_moving_avg_calc! / 100));
+        }, 0);
+        
+        // 分母: Σ(有利子負債 + 株主資本)
+        const denominator = validData.reduce((sum, f) => {
+          return sum + (f.interest_bearing_debt! + f.shareholders_equity!);
+        }, 0);
+        
+        if (denominator !== 0) {
+          updated.roic_moving_avg = roundToTwo((numerator / denominator) * 100);
+        } else {
+          updated.roic_moving_avg = undefined;
+        }
+      } else {
+        updated.roic_moving_avg = undefined;
+      }
+    } else {
+      updated.roic_moving_avg = undefined;
+    }
+  } else {
+    updated.roic_moving_avg = undefined;
+  }
+  
   // 支払利息率
   if (data.interest_expense !== undefined && data.interest_bearing_debt !== undefined && data.interest_bearing_debt !== 0) {
     updated.interest_rate = roundToTwo((data.interest_expense / data.interest_bearing_debt) * 100);
@@ -555,8 +622,13 @@ function CompanyDetail({
   onEditCompany: () => void;
   showToast: (message: string, type: 'success' | 'error') => void;
 }) {
+  // 全データに対して自動計算を実行（移動平均ROIC等のため）
+  const recalculateAll = (financials: FinancialData[]): FinancialData[] => {
+    return financials.map(f => calculateAutoFields(f, financials));
+  };
+  
   const [localFinancials, setLocalFinancials] = useState<FinancialData[]>(
-    company.financials.map(f => calculateAutoFields(f))
+    recalculateAll(company.financials)
   );
   const [saving, setSaving] = useState(false);
 
@@ -587,7 +659,7 @@ function CompanyDetail({
     
     try {
       const newFinancial = await api.createFinancial(company.id!, { year_period: newYearPeriod });
-      const updatedFinancials = [...localFinancials, calculateAutoFields(newFinancial)];
+      const updatedFinancials = recalculateAll([...localFinancials, newFinancial]);
       setLocalFinancials(updatedFinancials);
       onUpdate({ ...company, financials: updatedFinancials });
       showToast('年度を追加しました', 'success');
@@ -611,7 +683,7 @@ function CompanyDetail({
 
   const handleCellChange = useCallback((financialId: string, key: string, value: string) => {
     setLocalFinancials(prev => {
-      return prev.map(f => {
+      const updated = prev.map(f => {
         if (f.id !== financialId) return f;
         
         let newData: FinancialData;
@@ -623,8 +695,10 @@ function CompanyDetail({
         } else {
           newData = { ...f, [key]: value === '' ? undefined : parseFloat(value) };
         }
-        return calculateAutoFields(newData);
+        return newData;
       });
+      // 全データを再計算（移動平均ROIC等のため）
+      return updated.map(f => calculateAutoFields(f, updated));
     });
   }, []);
 
@@ -663,6 +737,12 @@ function CompanyDetail({
             {company.market && <span className="tag">{company.market}</span>}
           </div>
           {company.description && <p className="description">{company.description}</p>}
+          {company.financial_analysis && (
+            <div className="financial-analysis">
+              <h4>財務分析結果</h4>
+              <p>{company.financial_analysis}</p>
+            </div>
+          )}
         </div>
         <div className="header-actions">
           <button className="btn-secondary" onClick={handleAddYear}>+ 年度を追加</button>
@@ -706,7 +786,7 @@ function CompanyDetail({
             </thead>
             <tbody>
               {financialFields.filter(f => f.key !== 'year_period').map((field) => (
-                <tr key={field.key} className={autoCalculatedFields.includes(field.key) ? 'auto-calc-row' : ''}>
+                <tr key={field.key} className={`${autoCalculatedFields.includes(field.key) ? 'auto-calc-row' : ''} ${field.key === 'roic' || field.key === 'roic_moving_avg' ? 'roic-highlight' : ''}`}>
                   <td className="sticky-col">
                     {field.label}
                     {field.unit && <span className="field-unit">({field.unit})</span>}
@@ -732,11 +812,10 @@ function CompanyDetail({
                           </label>
                           {f.stock_price_end !== -1 && (
                             <input
-                              type="number"
-                              step="any"
+                              type="text"
                               className="cell-input"
-                              value={f.stock_price_end ?? ''}
-                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
+                              value={formatInputValue(f.stock_price_end)}
+                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/,/g, ''))}
                             />
                           )}
                         </div>
@@ -748,11 +827,10 @@ function CompanyDetail({
                         />
                       ) : (
                         <input
-                          type="number"
-                          step="any"
+                          type="text"
                           className="cell-input"
-                          value={f[field.key as keyof FinancialData] ?? ''}
-                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
+                          value={formatInputValue(f[field.key as keyof FinancialData])}
+                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/,/g, ''))}
                         />
                       )}
                     </td>
@@ -768,13 +846,23 @@ function CompanyDetail({
   );
 }
 
+// 入力フィールド用のフォーマット（3桁ごとにコンマ）
+function formatInputValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  if (typeof value === 'number') {
+    if (isNaN(value) || !isFinite(value)) return '';
+    return value.toLocaleString();
+  }
+  return String(value);
+}
+
 function formatValue(value: unknown, unit?: string): string {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'string') return value;
   if (typeof value === 'number') {
     if (isNaN(value) || !isFinite(value)) return 'データ無し';
     if (unit === '%' || unit === '倍') {
-      return value.toFixed(2);
+      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
     return value.toLocaleString();
   }
