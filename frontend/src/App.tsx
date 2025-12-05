@@ -2,6 +2,39 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from './api/client';
 import type { Company, CompanyWithFinancials, FinancialData } from './types';
 import { financialFields } from './types';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from 'recharts';
+
+// カスタム凡例コンポーネント（左軸・右軸で2行に分ける）
+function CustomLegend({ payload, leftAxisKeys }: { payload?: Array<{ value: string; color: string }>; leftAxisKeys: string[] }) {
+  if (!payload) return null;
+  const leftItems = payload.filter(p => leftAxisKeys.includes(p.value));
+  const rightItems = payload.filter(p => !leftAxisKeys.includes(p.value));
+  
+  return (
+    <div className="custom-legend">
+      <div className="legend-row">
+        {leftItems.map((entry, index) => (
+          <span key={`left-${index}`} className="legend-item">
+            <span className="legend-color" style={{ backgroundColor: entry.color }} />
+            {entry.value}
+          </span>
+        ))}
+      </div>
+      {rightItems.length > 0 && (
+        <div className="legend-row legend-row-right">
+          {rightItems.map((entry, index) => (
+            <span key={`right-${index}`} className="legend-item">
+              <span className="legend-color" style={{ backgroundColor: entry.color }} />
+              {entry.value}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 import './App.css';
 
 type View = 'list' | 'detail';
@@ -20,6 +53,9 @@ function App() {
   // 企業編集フォーム
   const [showEditCompanyForm, setShowEditCompanyForm] = useState(false);
   const [editCompanyForm, setEditCompanyForm] = useState({ name: '', ticker: '', sector: '', market: '', description: '', financial_analysis: '' });
+
+  // ROIC詳細モーダル
+  const [roicDetailModal, setRoicDetailModal] = useState<{ yearPeriod: string; detail: RoicCalcDetail } | null>(null);
 
   useEffect(() => {
     loadCompanies();
@@ -142,6 +178,7 @@ function App() {
             onUpdate={(updated) => setSelectedCompany(updated)}
             onEditCompany={handleOpenEditCompany}
             showToast={showToast}
+            onShowRoicDetail={(yearPeriod, detail) => setRoicDetailModal({ yearPeriod, detail })}
           />
         )}
       </main>
@@ -285,6 +322,84 @@ function App() {
       {toast && (
         <div className={`toast toast-${toast.type}`}>{toast.message}</div>
       )}
+
+      {/* 移動平均ROIC計算詳細モーダル */}
+      {roicDetailModal && (
+        <div className="modal-overlay" onClick={() => setRoicDetailModal(null)}>
+          <div className="modal roic-detail-modal" onClick={(e) => e.stopPropagation()}>
+            <h2>移動平均ROIC 計算詳細</h2>
+            <p className="roic-target-year">対象年度: {roicDetailModal.yearPeriod}末</p>
+            
+            <div className="roic-formula-section">
+              <h3>計算式</h3>
+              <div className="roic-formula">
+                移動平均ROIC = Σ(営業利益 × 移動平均計算用) ÷ Σ(有利子負債 + 株主資本) × 100
+              </div>
+            </div>
+
+            <div className="roic-detail-section">
+              <h3>各年度のデータ（過去最大5年）</h3>
+              <table className="roic-detail-table">
+                <thead>
+                  <tr>
+                    <th>年度</th>
+                    <th>営業利益</th>
+                    <th>×</th>
+                    <th>移動平均計算用</th>
+                    <th>=</th>
+                    <th>分子部分</th>
+                    <th>有利子負債</th>
+                    <th>+</th>
+                    <th>株主資本</th>
+                    <th>=</th>
+                    <th>分母部分</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {roicDetailModal.detail.targetYears.map((y) => (
+                    <tr key={y.year_period}>
+                      <td>{y.year_period}末</td>
+                      <td>{y.operating_income.toLocaleString()}</td>
+                      <td>×</td>
+                      <td>{(y.roic_moving_avg_calc / 100).toFixed(4)}</td>
+                      <td>=</td>
+                      <td className="highlight">{y.numeratorPart.toLocaleString(undefined, { maximumFractionDigits: 2 })}</td>
+                      <td>{y.interest_bearing_debt.toLocaleString()}</td>
+                      <td>+</td>
+                      <td>{y.shareholders_equity.toLocaleString()}</td>
+                      <td>=</td>
+                      <td className="highlight">{y.denominatorPart.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={5}><strong>合計</strong></td>
+                    <td className="highlight"><strong>{roicDetailModal.detail.totalNumerator.toLocaleString(undefined, { maximumFractionDigits: 2 })}</strong></td>
+                    <td colSpan={4}></td>
+                    <td className="highlight"><strong>{roicDetailModal.detail.totalDenominator.toLocaleString()}</strong></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div className="roic-calculation-section">
+              <h3>最終計算</h3>
+              <div className="roic-final-calc">
+                <span>{roicDetailModal.detail.totalNumerator.toLocaleString(undefined, { maximumFractionDigits: 2 })}</span>
+                <span> ÷ </span>
+                <span>{roicDetailModal.detail.totalDenominator.toLocaleString()}</span>
+                <span> × 100 = </span>
+                <strong>{roicDetailModal.detail.result.toFixed(2)}%</strong>
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button className="btn-primary" onClick={() => setRoicDetailModal(null)}>閉じる</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -337,6 +452,68 @@ function CompanyList({
       )}
     </div>
   );
+}
+
+// 移動平均ROIC計算詳細の型
+interface RoicCalcDetail {
+  targetYears: {
+    year_period: string;
+    operating_income: number;
+    roic_moving_avg_calc: number;
+    interest_bearing_debt: number;
+    shareholders_equity: number;
+    numeratorPart: number;
+    denominatorPart: number;
+  }[];
+  totalNumerator: number;
+  totalDenominator: number;
+  result: number;
+}
+
+// 移動平均ROIC計算詳細を取得する関数
+function getRoicMovingAvgDetail(data: FinancialData, allFinancials: FinancialData[]): RoicCalcDetail | null {
+  if (!data.year_period) return null;
+  
+  const sortedAll = [...allFinancials].sort((a, b) => a.year_period.localeCompare(b.year_period));
+  const currentIndex = sortedAll.findIndex(f => f.year_period === data.year_period);
+  
+  if (currentIndex < 0) return null;
+  
+  const startIndex = Math.max(0, currentIndex - 4);
+  const targetData = sortedAll.slice(startIndex, currentIndex + 1);
+  
+  // 必要なデータがあるものをフィルタ（roic_moving_avg_calcは固定値76.80%を使用）
+  const validData = targetData.filter(f => 
+    f.operating_income !== undefined &&
+    f.interest_bearing_debt !== undefined &&
+    f.shareholders_equity !== undefined
+  );
+  
+  if (validData.length === 0) return null;
+  
+  const targetYears = validData.map(f => {
+    const roicCalc = f.roic_moving_avg_calc ?? 76.80; // デフォルト値
+    return {
+      year_period: f.year_period,
+      operating_income: f.operating_income!,
+      roic_moving_avg_calc: roicCalc,
+      interest_bearing_debt: f.interest_bearing_debt!,
+      shareholders_equity: f.shareholders_equity!,
+      numeratorPart: f.operating_income! * (roicCalc / 100),
+      denominatorPart: f.interest_bearing_debt! + f.shareholders_equity!,
+    };
+  });
+  
+  const totalNumerator = targetYears.reduce((sum, y) => sum + y.numeratorPart, 0);
+  const totalDenominator = targetYears.reduce((sum, y) => sum + y.denominatorPart, 0);
+  const result = totalDenominator !== 0 ? (totalNumerator / totalDenominator) * 100 : 0;
+  
+  return {
+    targetYears,
+    totalNumerator,
+    totalDenominator,
+    result,
+  };
 }
 
 // 自動計算フィールドの定義
@@ -601,9 +778,46 @@ function calculateAutoFields(data: FinancialData, allFinancials?: FinancialData[
     updated.pbr = undefined;
   }
   
-  // 前年比成長率は前年度データが必要
-  updated.revenue_growth_yoy = undefined;
-  updated.profit_growth_yoy = undefined;
+  // 前年比売上成長率・前年比利益成長率
+  if (allFinancials && data.year_period) {
+    const sortedAll = [...allFinancials].sort((a, b) => a.year_period.localeCompare(b.year_period));
+    const currentIndex = sortedAll.findIndex(f => f.year_period === data.year_period);
+    
+    if (currentIndex > 0) {
+      const prevData = sortedAll[currentIndex - 1];
+      
+      // 前年比売上成長率 = (当年度売上高 / 前年度売上高) - 1
+      // 前年度がマイナスで今年度がプラスの場合は符号を反転
+      if (data.revenue !== undefined && prevData.revenue !== undefined && prevData.revenue !== 0) {
+        let growthRate = ((data.revenue / prevData.revenue) - 1) * 100;
+        if (prevData.revenue < 0 && data.revenue > 0) {
+          growthRate = Math.abs(growthRate);
+        }
+        updated.revenue_growth_yoy = roundToTwo(growthRate);
+      } else {
+        updated.revenue_growth_yoy = undefined;
+      }
+      
+      // 前年比利益成長率 = (当年度純利益 / 前年度純利益) - 1
+      // 前年度がマイナスで今年度がプラスの場合は符号を反転
+      if (data.net_income !== undefined && prevData.net_income !== undefined && prevData.net_income !== 0) {
+        let growthRate = ((data.net_income / prevData.net_income) - 1) * 100;
+        if (prevData.net_income < 0 && data.net_income > 0) {
+          growthRate = Math.abs(growthRate);
+        }
+        updated.profit_growth_yoy = roundToTwo(growthRate);
+      } else {
+        updated.profit_growth_yoy = undefined;
+      }
+    } else {
+      // 前年度データがない場合
+      updated.revenue_growth_yoy = undefined;
+      updated.profit_growth_yoy = undefined;
+    }
+  } else {
+    updated.revenue_growth_yoy = undefined;
+    updated.profit_growth_yoy = undefined;
+  }
   
   return updated;
 }
@@ -615,12 +829,14 @@ function CompanyDetail({
   onUpdate,
   onEditCompany,
   showToast,
+  onShowRoicDetail,
 }: {
   company: CompanyWithFinancials;
   onBack: () => void;
   onUpdate: (company: CompanyWithFinancials) => void;
   onEditCompany: () => void;
   showToast: (message: string, type: 'success' | 'error') => void;
+  onShowRoicDetail: (yearPeriod: string, detail: RoicCalcDetail) => void;
 }) {
   // 全データに対して自動計算を実行（移動平均ROIC等のため）
   const recalculateAll = (financials: FinancialData[]): FinancialData[] => {
@@ -793,7 +1009,26 @@ function CompanyDetail({
                   </td>
                   {sortedFinancials.map((f) => (
                     <td key={f.id}>
-                      {autoCalculatedFields.includes(field.key) ? (
+                      {field.key === 'roic_moving_avg' ? (
+                        <button 
+                          type="button"
+                          className="auto-value roic-clickable" 
+                          data-formula={calculationFormulas[field.key] || ''}
+                          onClick={() => {
+                            const detail = getRoicMovingAvgDetail(f, localFinancials);
+                            if (detail) {
+                              onShowRoicDetail(f.year_period, detail);
+                            } else {
+                              alert('計算に必要なデータが不足しています（営業利益、有利子負債、株主資本が必要です）');
+                            }
+                          }}
+                        >
+                          <span className="auto-value-number">
+                            {formatValue(f[field.key as keyof FinancialData], field.unit)}
+                          </span>
+                          <span className="auto-value-badge">クリックで詳細</span>
+                        </button>
+                      ) : autoCalculatedFields.includes(field.key) ? (
                         <div className="auto-value" data-formula={calculationFormulas[field.key] || ''}>
                           <span className="auto-value-number">
                             {formatValue(f[field.key as keyof FinancialData], field.unit)}
@@ -842,6 +1077,116 @@ function CompanyDetail({
           </table>
         </div>
       </div>
+
+      {/* グラフセクション */}
+      {sortedFinancials.length > 0 && (
+        <div className="charts-section">
+          <h3>推移グラフ</h3>
+          
+          {/* グラフ1: 売上・利益・FCF + 成長率 */}
+          <div className="chart-container">
+            <h4>売上・利益・FCF / 成長率</h4>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={sortedFinancials.map(f => ({
+                name: f.year_period,
+                売上高: f.revenue ?? null,
+                当期純利益: f.net_income ?? null,
+                営業利益: f.operating_income ?? null,
+                FCF: f.free_cash_flow ?? null,
+                前年比売上成長率: typeof f.revenue_growth_yoy === 'number' ? f.revenue_growth_yoy : null,
+                前年比利益成長率: typeof f.profit_growth_yoy === 'number' ? f.profit_growth_yoy : null,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="name" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} />
+                <YAxis yAxisId="left" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} tickFormatter={(v) => v.toLocaleString()} />
+                <YAxis yAxisId="right" orientation="right" stroke="#90e0ef" tick={{ fill: '#90e0ef', fontSize: 12 }} domain={['auto', 'auto']} tickCount={6} tickFormatter={(v) => `${v}%`} />
+                <Tooltip 
+                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }} 
+                  formatter={(value: number, name: string) => {
+                    if (name === '前年比売上成長率' || name === '前年比利益成長率') {
+                      return [`${value?.toFixed(2)}%`, name];
+                    }
+                    return [`${value?.toLocaleString()} 百万円`, name];
+                  }}
+                />
+                <Legend content={<CustomLegend leftAxisKeys={['売上高', '当期純利益', '営業利益', 'FCF']} />} />
+                <Line yAxisId="left" type="monotone" dataKey="売上高" stroke="#00d4aa" strokeWidth={2} dot={{ fill: '#00d4aa' }} connectNulls />
+                <Line yAxisId="left" type="monotone" dataKey="当期純利益" stroke="#00b4d8" strokeWidth={2} dot={{ fill: '#00b4d8' }} connectNulls />
+                <Line yAxisId="left" type="monotone" dataKey="営業利益" stroke="#f72585" strokeWidth={2} dot={{ fill: '#f72585' }} connectNulls />
+                <Line yAxisId="left" type="monotone" dataKey="FCF" stroke="#ffd60a" strokeWidth={2} dot={{ fill: '#ffd60a' }} connectNulls />
+                <Line yAxisId="right" type="monotone" dataKey="前年比売上成長率" stroke="#90e0ef" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#90e0ef' }} connectNulls />
+                <Line yAxisId="right" type="monotone" dataKey="前年比利益成長率" stroke="#cdb4db" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#cdb4db' }} connectNulls />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* グラフ2: ROIC・ROE + PER・PBR */}
+          <div className="chart-container">
+            <h4>ROIC・ROE / PER・PBR</h4>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={sortedFinancials.map(f => ({
+                name: f.year_period,
+                ROIC: f.roic,
+                ROE: f.roe,
+                移動平均ROIC: f.roic_moving_avg,
+                PER: f.per,
+                PBR: f.pbr,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="name" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} />
+                <YAxis yAxisId="left" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} unit="%" />
+                <YAxis yAxisId="right" orientation="right" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} unit="倍" />
+                <Tooltip 
+                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }} 
+                  formatter={(value: number, name: string) => {
+                    if (name === 'PER' || name === 'PBR') {
+                      return [`${value?.toFixed(2)} 倍`, name];
+                    }
+                    return [`${value?.toFixed(2)}%`, name];
+                  }}
+                />
+                <Legend content={<CustomLegend leftAxisKeys={['ROIC', '移動平均ROIC', 'ROE']} />} />
+                <Line yAxisId="left" type="monotone" dataKey="ROIC" stroke="#00d4aa" strokeWidth={2} dot={{ fill: '#00d4aa' }} />
+                <Line yAxisId="left" type="monotone" dataKey="移動平均ROIC" stroke="#00ffaa" strokeWidth={3} dot={{ fill: '#00ffaa' }} />
+                <Line yAxisId="left" type="monotone" dataKey="ROE" stroke="#00b4d8" strokeWidth={2} dot={{ fill: '#00b4d8' }} />
+                <Line yAxisId="right" type="monotone" dataKey="PER" stroke="#f72585" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#f72585' }} />
+                <Line yAxisId="right" type="monotone" dataKey="PBR" stroke="#ffd60a" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#ffd60a' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* グラフ3: 理論株価・期末株価 + 安全率 */}
+          <div className="chart-container">
+            <h4>理論株価・期末株価 / 安全率</h4>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={sortedFinancials.map(f => ({
+                name: f.year_period,
+                現状理論株価: f.current_theoretical_stock_price,
+                期末株価: f.stock_price_end && f.stock_price_end > 0 ? f.stock_price_end : null,
+                安全率: f.safety_ratio_current,
+              }))}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                <XAxis dataKey="name" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} />
+                <YAxis yAxisId="left" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} unit="円" />
+                <YAxis yAxisId="right" orientation="right" stroke="#888" tick={{ fill: '#888', fontSize: 12 }} unit="%" />
+                <Tooltip 
+                  contentStyle={{ background: '#1a1a2e', border: '1px solid #333' }} 
+                  formatter={(value: number, name: string) => {
+                    if (name === '安全率') {
+                      return [`${value?.toFixed(2)}%`, name];
+                    }
+                    return [`${value?.toLocaleString()} 円`, name];
+                  }}
+                />
+                <Legend content={<CustomLegend leftAxisKeys={['現状理論株価', '期末株価']} />} />
+                <Line yAxisId="left" type="monotone" dataKey="現状理論株価" stroke="#00d4aa" strokeWidth={2} dot={{ fill: '#00d4aa' }} />
+                <Line yAxisId="left" type="monotone" dataKey="期末株価" stroke="#f72585" strokeWidth={2} dot={{ fill: '#f72585' }} />
+                <Line yAxisId="right" type="monotone" dataKey="安全率" stroke="#ffd60a" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#ffd60a' }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
