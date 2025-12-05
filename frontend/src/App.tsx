@@ -346,6 +346,30 @@ const autoCalculatedFields = [
   'profit_growth_yoy',
 ];
 
+// 計算式の定義
+const calculationFormulas: Record<string, string> = {
+  equity_ratio: '純資産 ÷ 総資産 × 100',
+  net_profit_margin: '当期純利益 ÷ 売上高 × 100',
+  operating_profit_margin: '営業利益 ÷ 売上高 × 100',
+  current_business_value: '営業利益 ÷ 発行株式数 × 10000',
+  current_asset_value: '(流動資産 - 流動負債×1.2 + 投資その他の財産 - 固定負債) ÷ 発行株式数 × 1000',
+  current_theoretical_stock_price: '現状事業価値 + 現状資産価値',
+  margin_of_safety_current: '現状理論株価 - 期末株価',
+  safety_ratio_current: '安全域 ÷ 期末株価 × 100',
+  free_cash_flow: '営業CF - 投資CF',
+  roe: '当期純利益 ÷ 純資産 × 100',
+  roa: '当期純利益 ÷ 総資産 × 100',
+  roic: '営業利益 × (1 - 実効税率) ÷ (有利子負債 + 株主資本) × 100',
+  roic_moving_avg_calc: '固定値: 76.80%',
+  interest_rate: '支払利息 ÷ 有利子負債 × 100',
+  equity_cost: '0.04 + β値 × 5.46',
+  theoretical_discount_rate: '(1 - 自己資本比率) × 負債調達コスト + 自己資本比率 × 資本調達コスト',
+  per: '(期末株価 × 発行株式数) ÷ (当期純利益 × 1000)',
+  pbr: '(期末株価 × 発行株式数) ÷ (純資産 × 1000)',
+  revenue_growth_yoy: '(当年度売上高 ÷ 前年度売上高) - 1',
+  profit_growth_yoy: '(当年度純利益 ÷ 前年度純利益) - 1',
+};
+
 // 小数点以下2桁に丸める（3桁目で四捨五入）
 function roundToTwo(num: number): number {
   return Math.round(num * 100) / 100;
@@ -536,15 +560,30 @@ function CompanyDetail({
   );
   const [saving, setSaving] = useState(false);
 
-  // 年期でソート（新しい順）
+  // 年期でソート（古い順＝新しい年度が右側に来る）
   const sortedFinancials = [...localFinancials].sort((a, b) => 
-    b.year_period.localeCompare(a.year_period)
+    a.year_period.localeCompare(b.year_period)
   );
 
   const handleAddYear = async () => {
-    const currentYear = new Date().getFullYear();
-    const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
-    const newYearPeriod = `${currentYear}-${currentMonth}`;
+    // 既存の最新年度より1年後を設定（右側に追加される）
+    let newYearPeriod: string;
+    if (sortedFinancials.length > 0) {
+      const latestPeriod = sortedFinancials[sortedFinancials.length - 1].year_period; // 古い順ソートなので末尾が最新
+      const match = latestPeriod.match(/^(\d{4})-(\d{2})$/);
+      if (match) {
+        const nextYear = parseInt(match[1]) + 1;
+        newYearPeriod = `${nextYear}-${match[2]}`;
+      } else {
+        const currentYear = new Date().getFullYear();
+        const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+        newYearPeriod = `${currentYear}-${currentMonth}`;
+      }
+    } else {
+      const currentYear = new Date().getFullYear();
+      const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+      newYearPeriod = `${currentYear}-${currentMonth}`;
+    }
     
     try {
       const newFinancial = await api.createFinancial(company.id!, { year_period: newYearPeriod });
@@ -675,9 +714,12 @@ function CompanyDetail({
                   {sortedFinancials.map((f) => (
                     <td key={f.id}>
                       {autoCalculatedFields.includes(field.key) ? (
-                        <span className="auto-value">
-                          {formatValue(f[field.key as keyof FinancialData], field.unit)}
-                        </span>
+                        <div className="auto-value" data-formula={calculationFormulas[field.key] || ''}>
+                          <span className="auto-value-number">
+                            {formatValue(f[field.key as keyof FinancialData], field.unit)}
+                          </span>
+                          <span className="auto-value-badge">自動計算</span>
+                        </div>
                       ) : field.key === 'stock_price_end' ? (
                         <div className="stock-cell">
                           <label className="unlisted-label">
@@ -730,6 +772,7 @@ function formatValue(value: unknown, unit?: string): string {
   if (value === null || value === undefined || value === '') return '-';
   if (typeof value === 'string') return value;
   if (typeof value === 'number') {
+    if (isNaN(value) || !isFinite(value)) return 'データ無し';
     if (unit === '%' || unit === '倍') {
       return value.toFixed(2);
     }

@@ -282,9 +282,9 @@ body {
 
 .financials-table thead th:not(.sticky-col),
 .financials-table tbody td:not(.sticky-col) {
-  width: 130px;
-  min-width: 130px;
-  max-width: 130px;
+  width: 130px !important;
+  min-width: 130px !important;
+  max-width: 130px !important;
 }
 
 .financials-table.editable td {
@@ -333,13 +333,53 @@ body {
 }
 
 .auto-value {
-  display: block;
-  padding: 6px 8px;
-  background: rgba(0, 212, 170, 0.1);
-  border-radius: 4px;
-  text-align: right;
-  font-size: 0.8rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  position: relative;
+  cursor: help;
+}
+
+.auto-value::after {
+  content: attr(data-formula);
+  position: absolute;
+  bottom: 100%;
+  right: 0;
+  background: rgba(0, 0, 0, 0.95);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s, visibility 0.2s;
+  z-index: 100;
+  pointer-events: none;
+  border: 1px solid rgba(0, 212, 170, 0.3);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.auto-value:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+.auto-value-number {
+  font-size: 0.85rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #00d4aa 0%, #00b4d8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.auto-value-badge {
+  font-size: 0.55rem;
   color: #00d4aa;
+  opacity: 0.6;
 }
 
 .field-unit {
@@ -463,9 +503,9 @@ body {
   background: rgba(20, 30, 40, 0.98);
   text-align: left;
   font-weight: 500;
-  width: 160px;
-  min-width: 160px;
-  max-width: 160px;
+  width: 160px !important;
+  min-width: 160px !important;
+  max-width: 160px !important;
   z-index: 1;
 }
 
