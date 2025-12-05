@@ -1,17 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { api } from './api/client';
 import type { Company, CompanyWithFinancials, FinancialData } from './types';
 import { financialFields } from './types';
-import { AutoCalcField } from './components/AutoCalcField';
 import './App.css';
 
-type View = 'list' | 'detail' | 'financial-form';
+type View = 'list' | 'detail';
 
 function App() {
   const [view, setView] = useState<View>('list');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedCompany, setSelectedCompany] = useState<CompanyWithFinancials | null>(null);
-  const [editingFinancial, setEditingFinancial] = useState<FinancialData | null>(null);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
@@ -72,36 +70,6 @@ function App() {
     }
   }
 
-  async function handleSaveFinancial(data: FinancialData) {
-    if (!selectedCompany?.id) return;
-    
-    try {
-      if (editingFinancial?.id) {
-        await api.updateFinancial(selectedCompany.id, editingFinancial.id, data);
-        showToast('財務データを更新しました', 'success');
-      } else {
-        await api.createFinancial(selectedCompany.id, data);
-        showToast('財務データを追加しました', 'success');
-      }
-      await loadCompanyDetail(selectedCompany.id);
-      setView('detail');
-      setEditingFinancial(null);
-    } catch (error) {
-      showToast('保存に失敗しました', 'error');
-    }
-  }
-
-  async function handleDeleteFinancial(financialId: string) {
-    if (!selectedCompany?.id || !confirm('この財務データを削除しますか？')) return;
-    try {
-      await api.deleteFinancial(selectedCompany.id, financialId);
-      showToast('財務データを削除しました', 'success');
-      loadCompanyDetail(selectedCompany.id);
-    } catch (error) {
-      showToast('削除に失敗しました', 'error');
-    }
-  }
-
   function showToast(message: string, type: 'success' | 'error') {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -138,18 +106,8 @@ function App() {
           <CompanyDetail
             company={selectedCompany}
             onBack={() => setView('list')}
-            onAddFinancial={() => { setEditingFinancial(null); setView('financial-form'); }}
-            onEditFinancial={(f) => { setEditingFinancial(f); setView('financial-form'); }}
-            onDeleteFinancial={handleDeleteFinancial}
-          />
-        )}
-
-        {view === 'financial-form' && selectedCompany && (
-          <FinancialForm
-            companyName={selectedCompany.name}
-            initialData={editingFinancial}
-            onSave={handleSaveFinancial}
-            onCancel={() => { setView('detail'); setEditingFinancial(null); }}
+            onUpdate={(updated) => setSelectedCompany(updated)}
+            showToast={showToast}
           />
         )}
       </main>
@@ -271,84 +229,6 @@ function CompanyList({
   );
 }
 
-// 企業詳細コンポーネント
-function CompanyDetail({
-  company,
-  onBack,
-  onAddFinancial,
-  onEditFinancial,
-  onDeleteFinancial,
-}: {
-  company: CompanyWithFinancials;
-  onBack: () => void;
-  onAddFinancial: () => void;
-  onEditFinancial: (f: FinancialData) => void;
-  onDeleteFinancial: (id: string) => void;
-}) {
-  const sortedFinancials = [...company.financials].sort((a, b) => 
-    b.year_period.localeCompare(a.year_period)
-  );
-
-  return (
-    <div className="company-detail">
-      <button className="back-btn" onClick={onBack}>← 一覧に戻る</button>
-      
-      <div className="company-header">
-        <div>
-          <h2>{company.name}</h2>
-          <div className="company-meta">
-            {company.ticker && <span className="ticker">{company.ticker}</span>}
-            {company.sector && <span className="tag">{company.sector}</span>}
-            {company.market && <span className="tag">{company.market}</span>}
-          </div>
-          {company.description && <p className="description">{company.description}</p>}
-        </div>
-        <button className="btn-primary" onClick={onAddFinancial}>+ 財務データを追加</button>
-      </div>
-
-      <div className="financials-section">
-        <h3>財務データ</h3>
-        {sortedFinancials.length === 0 ? (
-          <div className="empty-state">
-            <p>財務データがありません</p>
-          </div>
-        ) : (
-          <div className="financials-table-container">
-            <table className="financials-table">
-              <thead>
-                <tr>
-                  <th className="sticky-col">項目</th>
-                  {sortedFinancials.map((f) => (
-                    <th key={f.id}>
-                      {formatYearPeriod(f.year_period)}
-                      <div className="th-actions">
-                        <button onClick={() => onEditFinancial(f)}>✏️</button>
-                        <button onClick={() => onDeleteFinancial(f.id!)}>🗑️</button>
-                      </div>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {financialFields.filter(f => f.key !== 'year_period').map((field) => (
-                  <tr key={field.key}>
-                    <td className="sticky-col">{field.label}</td>
-                    {sortedFinancials.map((f) => (
-                      <td key={f.id}>
-                        {formatValue(f[field.key as keyof FinancialData], field.unit)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // 自動計算フィールドの定義
 const autoCalculatedFields = [
   'equity_ratio',
@@ -403,18 +283,14 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.operating_profit_margin = undefined;
   }
   
-  // 現状事業価値（一株あたりの営業利益×10）= 営業利益 ÷ 発行株式数 × 10
-  // 営業利益は百万円、発行株式数は千株なので、×1000×10で円/株になる
-  // 小数点で四捨五入（整数）
+  // 現状事業価値（一株あたりの営業利益×10）
   if (data.operating_income !== undefined && data.shares_outstanding !== undefined && data.shares_outstanding !== 0) {
     updated.current_business_value = Math.round((data.operating_income * 10000) / data.shares_outstanding);
   } else {
     updated.current_business_value = undefined;
   }
   
-  // 現状資産価値 = (流動資産 - 流動負債×1.2 + 投資その他の財産 - 固定負債) ÷ 発行株式数
-  // 単位は百万円と千株なので、×1000で円/株になる
-  // 小数点で四捨五入（整数）
+  // 現状資産価値
   if (
     data.current_assets !== undefined &&
     data.current_liabilities !== undefined &&
@@ -429,49 +305,49 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.current_asset_value = undefined;
   }
   
-  // 現状理論株価 = 現状事業価値 + 現状資産価値（整数）
+  // 現状理論株価
   if (updated.current_business_value !== undefined && updated.current_asset_value !== undefined) {
     updated.current_theoretical_stock_price = Math.round(updated.current_business_value + updated.current_asset_value);
   } else {
     updated.current_theoretical_stock_price = undefined;
   }
   
-  // 安全域(現状) = 現状理論株価 - 期末株価（整数）
+  // 安全域(現状)
   if (updated.current_theoretical_stock_price !== undefined && data.stock_price_end !== undefined && data.stock_price_end > 0) {
     updated.margin_of_safety_current = Math.round(updated.current_theoretical_stock_price - data.stock_price_end);
   } else {
     updated.margin_of_safety_current = undefined;
   }
   
-  // 安全率(現状) = 安全域 ÷ 期末株価 × 100（%表示）
+  // 安全率(現状)
   if (updated.margin_of_safety_current !== undefined && data.stock_price_end !== undefined && data.stock_price_end > 0) {
     updated.safety_ratio_current = roundToTwo((updated.margin_of_safety_current / data.stock_price_end) * 100);
   } else {
     updated.safety_ratio_current = undefined;
   }
   
-  // FCF = 営業CF - 投資CF
+  // FCF
   if (data.operating_cf !== undefined && data.investing_cf !== undefined) {
     updated.free_cash_flow = roundToTwo(data.operating_cf - data.investing_cf);
   } else {
     updated.free_cash_flow = undefined;
   }
   
-  // ROE = 当期純利益 ÷ 純資産 × 100
+  // ROE
   if (data.net_income !== undefined && data.net_assets !== undefined && data.net_assets !== 0) {
     updated.roe = roundToTwo((data.net_income / data.net_assets) * 100);
   } else {
     updated.roe = undefined;
   }
   
-  // ROA = 当期純利益 ÷ 総資産 × 100
+  // ROA
   if (data.net_income !== undefined && data.total_assets !== undefined && data.total_assets !== 0) {
     updated.roa = roundToTwo((data.net_income / data.total_assets) * 100);
   } else {
     updated.roa = undefined;
   }
   
-  // ROIC = {営業利益 × (1-実効税率)} ÷ (有利子負債 + 株主資本) × 100
+  // ROIC
   if (
     data.operating_income !== undefined &&
     data.effective_tax_rate !== undefined &&
@@ -486,25 +362,24 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.roic = undefined;
   }
   
-  // 移動平均計算用 = 固定で76.80%
+  // 移動平均計算用
   updated.roic_moving_avg_calc = 76.80;
   
-  // 支払利息率 = 支払利息 ÷ 有利子負債 × 100
+  // 支払利息率
   if (data.interest_expense !== undefined && data.interest_bearing_debt !== undefined && data.interest_bearing_debt !== 0) {
     updated.interest_rate = roundToTwo((data.interest_expense / data.interest_bearing_debt) * 100);
   } else {
     updated.interest_rate = undefined;
   }
   
-  // 資本調達コスト = 0.04% + β値 × (5.5% - 0.04%) = 0.04 + β × 5.46
+  // 資本調達コスト
   if (data.beta !== undefined) {
     updated.equity_cost = roundToTwo(0.04 + data.beta * 5.46);
   } else {
     updated.equity_cost = undefined;
   }
   
-  // 理論割引率 = (1-自己資本比率)*負債調達コスト + 自己資本比率*資本調達コスト
-  // 自己資本比率とコストは%表示なので、計算時は/100して、結果を*100で%に戻す
+  // 理論割引率
   if (updated.equity_ratio !== undefined && data.debt_cost !== undefined && updated.equity_cost !== undefined) {
     const equityRatioDecimal = updated.equity_ratio / 100;
     const debtCostDecimal = data.debt_cost / 100;
@@ -516,8 +391,7 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.theoretical_discount_rate = undefined;
   }
   
-  // PER = (期末株価 × 発行株式数) / (当期純利益 × 1000)
-  // 期末株価が非上場(-1)の場合は計算しない
+  // PER
   if (
     data.stock_price_end !== undefined &&
     data.stock_price_end > 0 &&
@@ -530,7 +404,7 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.per = undefined;
   }
   
-  // PBR = (期末株価 × 発行株式数) / (純資産 × 1000)
+  // PBR
   if (
     data.stock_price_end !== undefined &&
     data.stock_price_end > 0 &&
@@ -543,179 +417,213 @@ function calculateAutoFields(data: FinancialData): FinancialData {
     updated.pbr = undefined;
   }
   
-  // 前年比売上成長率・前年比利益成長率は前年度データが必要なため、現時点ではundefined
-  // TODO: 前年度データを参照して計算する
+  // 前年比成長率は前年度データが必要
   updated.revenue_growth_yoy = undefined;
   updated.profit_growth_yoy = undefined;
   
   return updated;
 }
 
-// 財務データ入力フォーム
-function FinancialForm({
-  companyName,
-  initialData,
-  onSave,
-  onCancel,
+// 企業詳細コンポーネント
+function CompanyDetail({
+  company,
+  onBack,
+  onUpdate,
+  showToast,
 }: {
-  companyName: string;
-  initialData: FinancialData | null;
-  onSave: (data: FinancialData) => void;
-  onCancel: () => void;
+  company: CompanyWithFinancials;
+  onBack: () => void;
+  onUpdate: (company: CompanyWithFinancials) => void;
+  showToast: (message: string, type: 'success' | 'error') => void;
 }) {
-  const [formData, setFormData] = useState<FinancialData>(
-    calculateAutoFields(initialData || { year_period: '' })
+  const [localFinancials, setLocalFinancials] = useState<FinancialData[]>(
+    company.financials.map(f => calculateAutoFields(f))
   );
-  const [isUnlisted, setIsUnlisted] = useState(initialData?.stock_price_end === -1);
+  const [saving, setSaving] = useState(false);
 
-  const handleChange = (key: string, value: string) => {
-    let newData: FinancialData;
-    if (key === 'year_period' || key === 'comment') {
-      newData = { ...formData, [key]: value };
-    } else {
-      newData = { ...formData, [key]: value === '' ? undefined : parseFloat(value) };
+  // 年期でソート（新しい順）
+  const sortedFinancials = [...localFinancials].sort((a, b) => 
+    b.year_period.localeCompare(a.year_period)
+  );
+
+  const handleAddYear = async () => {
+    const currentYear = new Date().getFullYear();
+    const currentMonth = String(new Date().getMonth() + 1).padStart(2, '0');
+    const newYearPeriod = `${currentYear}-${currentMonth}`;
+    
+    try {
+      const newFinancial = await api.createFinancial(company.id!, { year_period: newYearPeriod });
+      const updatedFinancials = [...localFinancials, calculateAutoFields(newFinancial)];
+      setLocalFinancials(updatedFinancials);
+      onUpdate({ ...company, financials: updatedFinancials });
+      showToast('年度を追加しました', 'success');
+    } catch {
+      showToast('追加に失敗しました', 'error');
     }
-    // 自動計算を実行
-    setFormData(calculateAutoFields(newData));
   };
 
-  const handleUnlistedChange = (checked: boolean) => {
-    setIsUnlisted(checked);
-    const newData = { ...formData, stock_price_end: checked ? -1 : undefined };
-    setFormData(calculateAutoFields(newData));
+  const handleDeleteYear = async (financialId: string) => {
+    if (!confirm('この年度のデータを削除しますか？')) return;
+    try {
+      await api.deleteFinancial(company.id!, financialId);
+      const newFinancials = localFinancials.filter(f => f.id !== financialId);
+      setLocalFinancials(newFinancials);
+      onUpdate({ ...company, financials: newFinancials });
+      showToast('削除しました', 'success');
+    } catch {
+      showToast('削除に失敗しました', 'error');
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    onSave(formData);
-  };
+  const handleCellChange = useCallback((financialId: string, key: string, value: string) => {
+    setLocalFinancials(prev => {
+      return prev.map(f => {
+        if (f.id !== financialId) return f;
+        
+        let newData: FinancialData;
+        if (key === 'year_period' || key === 'comment') {
+          newData = { ...f, [key]: value };
+        } else if (key === 'stock_price_end_unlisted') {
+          // 非上場チェックボックス
+          newData = { ...f, stock_price_end: value === 'true' ? -1 : undefined };
+        } else {
+          newData = { ...f, [key]: value === '' ? undefined : parseFloat(value) };
+        }
+        return calculateAutoFields(newData);
+      });
+    });
+  }, []);
 
-  const categories = [
-    { id: 'basic', label: '基本情報' },
-    { id: 'pl', label: '損益計算書' },
-    { id: 'bs', label: '貸借対照表' },
-    { id: 'stock', label: '株式情報' },
-    { id: 'ratio', label: '財務指標' },
-    { id: 'valuation', label: 'バリュエーション' },
-    { id: 'growth', label: '成長率' },
-    { id: 'cf', label: 'キャッシュフロー' },
-    { id: 'cost', label: '資本コスト' },
-    { id: 'other', label: 'その他' },
-  ];
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      for (const financial of localFinancials) {
+        if (financial.id) {
+          await api.updateFinancial(company.id!, financial.id, financial);
+        }
+      }
+      showToast('保存しました', 'success');
+      onUpdate({ ...company, financials: localFinancials });
+    } catch {
+      showToast('保存に失敗しました', 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="financial-form">
-      <h2>{companyName} - {initialData ? '財務データを編集' : '財務データを追加'}</h2>
+    <div className="company-detail">
+      <button className="back-btn" onClick={onBack}>← 一覧に戻る</button>
       
-      <form onSubmit={handleSubmit}>
-        {categories.map((cat) => {
-          const fields = financialFields.filter((f) => f.category === cat.id);
-          if (fields.length === 0) return null;
-          
-          return (
-            <div key={cat.id} className="form-category">
-              <h3>{cat.label}</h3>
-              <div className="form-grid">
-                {fields.map((field) => (
-                  autoCalculatedFields.includes(field.key) ? (
-                    <AutoCalcField
-                      key={field.key}
-                      label={field.label}
-                      value={formData[field.key as keyof FinancialData] as number | undefined}
-                      unit={field.unit}
-                      noDataText={
-                        (field.key === 'revenue_growth_yoy' || field.key === 'profit_growth_yoy')
-                          ? 'データ無し'
-                          : undefined
-                      }
+      <div className="company-header">
+        <div>
+          <h2>{company.name}</h2>
+          <div className="company-meta">
+            {company.ticker && <span className="ticker">{company.ticker}</span>}
+            {company.sector && <span className="tag">{company.sector}</span>}
+            {company.market && <span className="tag">{company.market}</span>}
+          </div>
+          {company.description && <p className="description">{company.description}</p>}
+        </div>
+        <div className="header-actions">
+          <button className="btn-secondary" onClick={handleAddYear}>+ 年度を追加</button>
+          <button className="btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? '保存中...' : '💾 保存'}
+          </button>
+        </div>
+      </div>
+
+      <div className="financials-section">
+        <h3>財務データ</h3>
+        <div className="financials-table-container">
+          <table className="financials-table editable">
+            <thead>
+              <tr>
+                <th className="sticky-col">年期</th>
+                {sortedFinancials.map((f) => (
+                  <th key={f.id}>
+                    <input
+                      type="month"
+                      className="year-input"
+                      value={f.year_period || ''}
+                      onChange={(e) => handleCellChange(f.id!, 'year_period', e.target.value)}
                     />
-                  ) : field.key === 'stock_price_end' ? (
-                    <div key={field.key} className="form-group">
-                      <label>{field.label}</label>
-                      <div className="stock-price-input">
-                        <label className="unlisted-checkbox">
-                          <input
-                            type="checkbox"
-                            checked={isUnlisted}
-                            onChange={(e) => handleUnlistedChange(e.target.checked)}
-                          />
-                          <span>非上場</span>
-                        </label>
-                        {!isUnlisted && (
-                          <div className="input-with-unit">
+                    <span className="year-suffix">末</span>
+                    <button 
+                      className="delete-year-btn"
+                      onClick={() => handleDeleteYear(f.id!)}
+                      title="この年度を削除"
+                    >
+                      ×
+                    </button>
+                  </th>
+                ))}
+                {sortedFinancials.length === 0 && (
+                  <th className="empty-col">
+                    <span>年度を追加してください</span>
+                  </th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {financialFields.filter(f => f.key !== 'year_period').map((field) => (
+                <tr key={field.key} className={autoCalculatedFields.includes(field.key) ? 'auto-calc-row' : ''}>
+                  <td className="sticky-col">
+                    {field.label}
+                    {field.unit && <span className="field-unit">({field.unit})</span>}
+                  </td>
+                  {sortedFinancials.map((f) => (
+                    <td key={f.id}>
+                      {autoCalculatedFields.includes(field.key) ? (
+                        <span className="auto-value">
+                          {formatValue(f[field.key as keyof FinancialData], field.unit)}
+                        </span>
+                      ) : field.key === 'stock_price_end' ? (
+                        <div className="stock-cell">
+                          <label className="unlisted-label">
+                            <input
+                              type="checkbox"
+                              checked={f.stock_price_end === -1}
+                              onChange={(e) => handleCellChange(f.id!, 'stock_price_end_unlisted', String(e.target.checked))}
+                            />
+                            <span>非上場</span>
+                          </label>
+                          {f.stock_price_end !== -1 && (
                             <input
                               type="number"
                               step="any"
-                              value={formData.stock_price_end ?? ''}
-                              onChange={(e) => handleChange('stock_price_end', e.target.value)}
+                              className="cell-input"
+                              value={f.stock_price_end ?? ''}
+                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
                             />
-                            <span className="input-unit">{field.unit}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : field.key === 'year_period' ? (
-                    <div key={field.key} className="form-group">
-                      <label>{field.label}</label>
-                      <div className="year-period-input">
-                        <input
-                          type="month"
-                          value={formData.year_period || ''}
-                          onChange={(e) => handleChange('year_period', e.target.value)}
-                          required
-                        />
-                        <span className="year-period-suffix">末</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <div key={field.key} className="form-group">
-                      <label>{field.label}</label>
-                      {field.key === 'comment' ? (
+                          )}
+                        </div>
+                      ) : field.key === 'comment' ? (
                         <textarea
-                          value={formData[field.key] || ''}
-                          onChange={(e) => handleChange(field.key, e.target.value)}
+                          className="cell-textarea"
+                          value={f.comment || ''}
+                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
                         />
                       ) : (
-                        <div className="input-with-unit">
-                          <input
-                            type="number"
-                            step="any"
-                            value={formData[field.key as keyof FinancialData] ?? ''}
-                            onChange={(e) => handleChange(field.key, e.target.value)}
-                          />
-                          {field.unit && <span className="input-unit">{field.unit}</span>}
-                        </div>
+                        <input
+                          type="number"
+                          step="any"
+                          className="cell-input"
+                          value={f[field.key as keyof FinancialData] ?? ''}
+                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
+                        />
                       )}
-                    </div>
-                  )
-                ))}
-              </div>
-            </div>
-          );
-        })}
-
-        <div className="form-actions">
-          <button type="button" className="btn-secondary" onClick={onCancel}>
-            キャンセル
-          </button>
-          <button type="submit" className="btn-primary">保存</button>
+                    </td>
+                  ))}
+                  {sortedFinancials.length === 0 && <td className="empty-col">-</td>}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      </form>
+      </div>
     </div>
   );
-}
-
-// 年期を「2024年3月末」形式に変換
-function formatYearPeriod(yearPeriod: string): string {
-  // "2024-03" または "2024/03" 形式を想定
-  const match = yearPeriod.match(/^(\d{4})[-\/](\d{2})$/);
-  if (match) {
-    const year = match[1];
-    const month = parseInt(match[2], 10);
-    return `${year}年${month}月末`;
-  }
-  // マッチしない場合はそのまま表示 + 末
-  return yearPeriod + '末';
 }
 
 function formatValue(value: unknown, unit?: string): string {
