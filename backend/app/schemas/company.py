@@ -145,3 +145,7 @@ class FinancialDataCreate(BaseModel):
     pbr: Optional[float] = None
     comment: Optional[str] = None
 
+
+
+
+
