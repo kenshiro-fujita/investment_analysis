@@ -935,6 +935,9 @@ function CompanyDetail({
   
   // 入力中のフィールドを追跡するstate（小数点入力用）
   const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: string } | null>(null);
+  
+  // 変更があったかどうかのフラグ
+  const [hasChanges, setHasChanges] = useState(false);
 
   // セルが編集モードかどうか
   const isEditingCell = useCallback((id: string, key: string) => {
@@ -1024,6 +1027,9 @@ function CompanyDetail({
       setEditingCell(null);
     }
 
+    // 変更があったことを記録
+    setHasChanges(true);
+
     setLocalFinancials(prev => {
       const updated = prev.map(f => {
         if (f.id !== financialId) return f;
@@ -1046,11 +1052,15 @@ function CompanyDetail({
     });
   }, []);
 
-  // フォーカスが外れた時に自動保存
+  // フォーカスが外れた時に自動保存（変更があった場合のみ）
   const handleAutoSave = useCallback(async () => {
     setEditingCell(null);
     setActiveEditCell(null);
     setSelectedCell(null);
+    
+    // 変更がない場合は保存をスキップ
+    if (!hasChanges) return;
+    
     try {
       for (const financial of localFinancials) {
         if (financial.id) {
@@ -1058,10 +1068,11 @@ function CompanyDetail({
         }
       }
       onUpdate({ ...company, financials: localFinancials });
+      setHasChanges(false);
     } catch {
       showToast('自動保存に失敗しました', 'error');
     }
-  }, [localFinancials, company, onUpdate]);
+  }, [localFinancials, company, onUpdate, hasChanges]);
 
   return (
     <div className="company-detail">
