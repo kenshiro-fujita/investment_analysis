@@ -416,11 +416,39 @@ function CompanyList({
   onDelete: (id: string) => void;
   onAdd: () => void;
 }) {
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // 検索クエリで企業をフィルタ
+  const filteredCompanies = companies.filter((company) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    const nameMatch = company.name.toLowerCase().includes(query);
+    const tickerMatch = company.ticker?.toLowerCase().includes(query);
+    return nameMatch || tickerMatch;
+  });
+
   return (
     <div className="company-list">
       <div className="section-header">
         <h2>企業一覧</h2>
         <button className="btn-primary" onClick={onAdd}>+ 企業を追加</button>
+      </div>
+
+      {/* 検索バー */}
+      <div className="search-bar">
+        <input
+          type="text"
+          className="search-input"
+          placeholder="🔍 企業名または証券コードで検索..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          maxLength={50}
+        />
+        {searchQuery && (
+          <button className="search-clear" onClick={() => setSearchQuery('')}>
+            ✕
+          </button>
+        )}
       </div>
       
       {companies.length === 0 ? (
@@ -428,9 +456,13 @@ function CompanyList({
           <p>まだ企業が登録されていません</p>
           <button className="btn-primary" onClick={onAdd}>最初の企業を登録</button>
         </div>
+      ) : filteredCompanies.length === 0 ? (
+        <div className="empty-state">
+          <p>一致する企業が見つかりません</p>
+        </div>
       ) : (
         <div className="company-grid">
-          {companies.map((company) => (
+          {filteredCompanies.map((company) => (
             <div key={company.id} className="company-card" onClick={() => onSelect(company.id!)}>
               <div className="company-card-header">
                 <h3>{company.name}</h3>
@@ -846,8 +878,6 @@ function CompanyDetail({
   const [localFinancials, setLocalFinancials] = useState<FinancialData[]>(
     recalculateAll(company.financials)
   );
-  const [saving, setSaving] = useState(false);
-
   // 年期でソート（古い順＝新しい年度が右側に来る）
   const sortedFinancials = [...localFinancials].sort((a, b) => 
     a.year_period.localeCompare(b.year_period)
@@ -930,22 +960,20 @@ function CompanyDetail({
     });
   }, []);
 
-  const handleSave = async () => {
-    setSaving(true);
+  // フォーカスが外れた時に自動保存
+  const handleAutoSave = useCallback(async () => {
+    setEditingCell(null);
     try {
       for (const financial of localFinancials) {
         if (financial.id) {
           await api.updateFinancial(company.id!, financial.id, financial);
         }
       }
-      showToast('保存しました', 'success');
       onUpdate({ ...company, financials: localFinancials });
     } catch {
-      showToast('保存に失敗しました', 'error');
-    } finally {
-      setSaving(false);
+      showToast('自動保存に失敗しました', 'error');
     }
-  };
+  }, [localFinancials, company, onUpdate]);
 
   return (
     <div className="company-detail">
@@ -958,6 +986,9 @@ function CompanyDetail({
             <button className="edit-company-btn" onClick={onEditCompany} title="企業情報を編集">
               ✏️
             </button>
+            <div className="header-actions">
+              <button className="btn-primary" onClick={handleAddYear}>+ 年度を追加</button>
+            </div>
           </div>
           <div className="company-meta">
             {company.ticker && <span className="ticker">{company.ticker}</span>}
@@ -971,12 +1002,6 @@ function CompanyDetail({
               <p>{company.financial_analysis}</p>
             </div>
           )}
-        </div>
-        <div className="header-actions">
-          <button className="btn-secondary" onClick={handleAddYear}>+ 年度を追加</button>
-          <button className="btn-primary" onClick={handleSave} disabled={saving}>
-            {saving ? '保存中...' : '💾 保存'}
-          </button>
         </div>
       </div>
 
@@ -994,6 +1019,7 @@ function CompanyDetail({
                       className="year-input"
                       value={f.year_period || ''}
                       onChange={(e) => handleCellChange(f.id!, 'year_period', e.target.value)}
+                      onBlur={handleAutoSave}
                     />
                     <span className="year-suffix">末</span>
                     <button 
@@ -1053,7 +1079,10 @@ function CompanyDetail({
                             <input
                               type="checkbox"
                               checked={f.stock_price_end === -1}
-                              onChange={(e) => handleCellChange(f.id!, 'stock_price_end_unlisted', String(e.target.checked))}
+                              onChange={(e) => {
+                                handleCellChange(f.id!, 'stock_price_end_unlisted', String(e.target.checked));
+                                setTimeout(handleAutoSave, 100);
+                              }}
                             />
                             <span>非上場</span>
                           </label>
@@ -1063,6 +1092,7 @@ function CompanyDetail({
                               className="cell-input"
                               value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f.stock_price_end)}
                               onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
+                              onBlur={handleAutoSave}
                             />
                           )}
                         </div>
@@ -1071,6 +1101,7 @@ function CompanyDetail({
                           className="cell-textarea"
                           value={f.comment || ''}
                           onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
+                          onBlur={handleAutoSave}
                         />
                       ) : (
                         <input
@@ -1078,6 +1109,7 @@ function CompanyDetail({
                           className="cell-input"
                           value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f[field.key as keyof FinancialData])}
                           onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
+                          onBlur={handleAutoSave}
                         />
                       )}
                     </td>

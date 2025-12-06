@@ -7,7 +7,7 @@
     "market": "グロース",
     "description": "SaaSサービスの開発・販売。Backlog/Cacoo/NulabPass。",
     "created_at": "2025-12-06T02:02:31.919600",
-    "updated_at": "2025-12-06T05:54:10.647484",
+    "updated_at": "2025-12-06T18:13:02.655755",
     "financials": [
       {
         "id": "59667971-bfb1-4fa6-bb05-ea950ba54a9f",
@@ -35,7 +35,7 @@
         "current_theoretical_stock_price": -107.0,
         "margin_of_safety_current": null,
         "safety_ratio_current": null,
-        "revenue_growth_yoy": 22.26,
+        "revenue_growth_yoy": 21.19,
         "profit_growth_yoy": -60.0,
         "operating_cf": 242.0,
         "investing_cf": -80.0,
@@ -104,7 +104,7 @@
       {
         "id": "5265d762-34ff-4fc3-a686-357ece71b0f1",
         "year_period": "2020-03",
-        "revenue": 1586.0,
+        "revenue": 1600.0,
         "net_income": -65.0,
         "operating_income": null,
         "interest_expense": null,
@@ -120,8 +120,8 @@
         "shares_outstanding": null,
         "stock_price_end": -1.0,
         "equity_ratio": 17.07,
-        "net_profit_margin": -4.1,
-        "operating_profit_margin": null,
+        "net_profit_margin": -4.06,
+        "operating_profit_margin": 0.0,
         "current_business_value": null,
         "current_asset_value": null,
         "current_theoretical_stock_price": null,
