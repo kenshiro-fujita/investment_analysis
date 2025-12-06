@@ -362,6 +362,82 @@ body {
   padding: 4px 6px;
 }
 
+.cell-wrapper {
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  box-sizing: border-box;
+}
+
+.cell-wrapper:focus {
+  outline: none;
+  border-color: rgba(0, 212, 170, 0.5);
+  background: rgba(0, 212, 170, 0.05);
+}
+
+.cell-wrapper.selected {
+  border-color: #00d4aa;
+  background: rgba(0, 212, 170, 0.1);
+}
+
+.cell-wrapper.editing {
+  padding: 0;
+  background: transparent;
+  border: none;
+}
+
+.cell-display {
+  color: #fff;
+  font-size: 0.8rem;
+  text-align: right;
+  width: 100%;
+}
+
+.cell-display.comment-display {
+  text-align: left;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.year-cell-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.year-cell-wrapper:focus {
+  outline: none;
+  border-color: rgba(0, 212, 170, 0.5);
+}
+
+.year-cell-wrapper.selected {
+  border-color: #00d4aa;
+  background: rgba(0, 212, 170, 0.1);
+}
+
+.year-cell-wrapper.editing {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+.year-display {
+  color: #fff;
+  font-size: 0.85rem;
+}
+
 .cell-input {
   width: 100%;
   padding: 6px 8px;

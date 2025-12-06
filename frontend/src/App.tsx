@@ -927,8 +927,94 @@ function CompanyDetail({
     }
   };
 
-  // 入力中のフィールドを追跡するstate
+  // 選択中のセル（フォーカスはあるが編集モードではない）
+  const [selectedCell, setSelectedCell] = useState<{ id: string; key: string } | null>(null);
+  
+  // 編集モードのセル
+  const [activeEditCell, setActiveEditCell] = useState<{ id: string; key: string } | null>(null);
+  
+  // 入力中のフィールドを追跡するstate（小数点入力用）
   const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: string } | null>(null);
+
+  // セルが編集モードかどうか
+  const isEditingCell = useCallback((id: string, key: string) => {
+    return activeEditCell?.id === id && activeEditCell?.key === key;
+  }, [activeEditCell]);
+
+  // セルが選択されているかどうか
+  const isSelectedCell = useCallback((id: string, key: string) => {
+    return selectedCell?.id === id && selectedCell?.key === key;
+  }, [selectedCell]);
+
+  // セルをクリックで選択
+  const handleCellSelect = useCallback((id: string, key: string) => {
+    if (!isEditingCell(id, key)) {
+      setSelectedCell({ id, key });
+      setActiveEditCell(null);
+    }
+  }, [isEditingCell]);
+
+  // ダブルクリックで編集開始
+  const startEditing = useCallback((id: string, key: string) => {
+    setActiveEditCell({ id, key });
+    setSelectedCell({ id, key });
+  }, []);
+
+  // 編集可能なフィールドリスト（自動計算フィールドを除く）
+  const editableFieldKeys = financialFields
+    .filter(f => f.key !== 'year_period' && !autoCalculatedFields.includes(f.key))
+    .map(f => f.key) as string[];
+
+  // Enterキーで編集開始、矢印キーでセル移動
+  const handleCellKeyDown = useCallback((e: React.KeyboardEvent, id: string, key: string) => {
+    if (e.key === 'Enter' && isSelectedCell(id, key) && !isEditingCell(id, key)) {
+      e.preventDefault();
+      startEditing(id, key);
+    } else if (e.key === 'Escape') {
+      setActiveEditCell(null);
+      setSelectedCell(null);
+    } else if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key) && !isEditingCell(id, key)) {
+      e.preventDefault();
+      
+      // 現在のセルの位置を取得
+      const currentColIndex = sortedFinancials.findIndex(f => f.id === id);
+      const currentRowIndex = editableFieldKeys.indexOf(key);
+      
+      if (currentColIndex === -1 || currentRowIndex === -1) return;
+      
+      let newColIndex = currentColIndex;
+      let newRowIndex = currentRowIndex;
+      
+      switch (e.key) {
+        case 'ArrowUp':
+          newRowIndex = Math.max(0, currentRowIndex - 1);
+          break;
+        case 'ArrowDown':
+          newRowIndex = Math.min(editableFieldKeys.length - 1, currentRowIndex + 1);
+          break;
+        case 'ArrowLeft':
+          newColIndex = Math.max(0, currentColIndex - 1);
+          break;
+        case 'ArrowRight':
+          newColIndex = Math.min(sortedFinancials.length - 1, currentColIndex + 1);
+          break;
+      }
+      
+      const newId = sortedFinancials[newColIndex]?.id;
+      const newKey = editableFieldKeys[newRowIndex];
+      
+      if (newId && newKey) {
+        setSelectedCell({ id: newId, key: newKey });
+        setActiveEditCell(null);
+        
+        // 新しいセルにフォーカスを移動
+        setTimeout(() => {
+          const cellElement = document.querySelector(`[data-cell-id="${newId}"][data-cell-key="${newKey}"]`) as HTMLElement;
+          cellElement?.focus();
+        }, 0);
+      }
+    }
+  }, [isSelectedCell, isEditingCell, startEditing, sortedFinancials, editableFieldKeys]);
 
   const handleCellChange = useCallback((financialId: string, key: string, value: string) => {
     // 入力中の値を追跡（ピリオドで終わる場合など、parseFloatで失われる情報を保持）
@@ -963,6 +1049,8 @@ function CompanyDetail({
   // フォーカスが外れた時に自動保存
   const handleAutoSave = useCallback(async () => {
     setEditingCell(null);
+    setActiveEditCell(null);
+    setSelectedCell(null);
     try {
       for (const financial of localFinancials) {
         if (financial.id) {
@@ -1014,14 +1102,27 @@ function CompanyDetail({
                 <th className="sticky-col">年期</th>
                 {sortedFinancials.map((f) => (
                   <th key={f.id}>
-                    <input
-                      type="month"
-                      className="year-input"
-                      value={f.year_period || ''}
-                      onChange={(e) => handleCellChange(f.id!, 'year_period', e.target.value)}
-                      onBlur={handleAutoSave}
-                    />
-                    <span className="year-suffix">末</span>
+                    <div
+                      className={`year-cell-wrapper ${isSelectedCell(f.id!, 'year_period') ? 'selected' : ''} ${isEditingCell(f.id!, 'year_period') ? 'editing' : ''}`}
+                      tabIndex={0}
+                      onClick={() => handleCellSelect(f.id!, 'year_period')}
+                      onDoubleClick={() => startEditing(f.id!, 'year_period')}
+                      onKeyDown={(e) => handleCellKeyDown(e, f.id!, 'year_period')}
+                    >
+                      {isEditingCell(f.id!, 'year_period') ? (
+                        <input
+                          type="month"
+                          className="year-input"
+                          value={f.year_period || ''}
+                          onChange={(e) => handleCellChange(f.id!, 'year_period', e.target.value)}
+                          onBlur={handleAutoSave}
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="year-display">{f.year_period || '-'}</span>
+                      )}
+                      <span className="year-suffix">末</span>
+                    </div>
                     <button 
                       className="delete-year-btn"
                       onClick={() => handleDeleteYear(f.id!)}
@@ -1087,30 +1188,81 @@ function CompanyDetail({
                             <span>非上場</span>
                           </label>
                           {f.stock_price_end !== -1 && (
-                            <input
-                              type="text"
-                              className="cell-input"
-                              value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f.stock_price_end)}
-                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
-                              onBlur={handleAutoSave}
-                            />
+                            <div
+                              className={`cell-wrapper ${isSelectedCell(f.id!, field.key) ? 'selected' : ''} ${isEditingCell(f.id!, field.key) ? 'editing' : ''}`}
+                              tabIndex={0}
+                              data-cell-id={f.id}
+                              data-cell-key={field.key}
+                              onClick={() => handleCellSelect(f.id!, field.key)}
+                              onDoubleClick={() => startEditing(f.id!, field.key)}
+                              onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                            >
+                              {isEditingCell(f.id!, field.key) ? (
+                                <input
+                                  type="text"
+                                  className="cell-input"
+                                  value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f.stock_price_end)}
+                                  onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
+                                  onBlur={handleAutoSave}
+                                  autoFocus
+                                />
+                              ) : (
+                                <span className="cell-display">
+                                  {formatInputValue(f.stock_price_end) || '-'}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
                       ) : field.key === 'comment' ? (
-                        <textarea
-                          className="cell-textarea"
-                          value={f.comment || ''}
-                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
-                          onBlur={handleAutoSave}
-                        />
+                        <div
+                          className={`cell-wrapper ${isSelectedCell(f.id!, field.key) ? 'selected' : ''} ${isEditingCell(f.id!, field.key) ? 'editing' : ''}`}
+                          tabIndex={0}
+                          data-cell-id={f.id}
+                          data-cell-key={field.key}
+                          onClick={() => handleCellSelect(f.id!, field.key)}
+                          onDoubleClick={() => startEditing(f.id!, field.key)}
+                          onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                        >
+                          {isEditingCell(f.id!, field.key) ? (
+                            <textarea
+                              className="cell-textarea"
+                              value={f.comment || ''}
+                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value)}
+                              onBlur={handleAutoSave}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="cell-display comment-display">
+                              {f.comment || '-'}
+                            </span>
+                          )}
+                        </div>
                       ) : (
-                        <input
-                          type="text"
-                          className="cell-input"
-                          value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f[field.key as keyof FinancialData])}
-                          onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
-                          onBlur={handleAutoSave}
-                        />
+                        <div
+                          className={`cell-wrapper ${isSelectedCell(f.id!, field.key) ? 'selected' : ''} ${isEditingCell(f.id!, field.key) ? 'editing' : ''}`}
+                          tabIndex={0}
+                          data-cell-id={f.id}
+                          data-cell-key={field.key}
+                          onClick={() => handleCellSelect(f.id!, field.key)}
+                          onDoubleClick={() => startEditing(f.id!, field.key)}
+                          onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                        >
+                          {isEditingCell(f.id!, field.key) ? (
+                            <input
+                              type="text"
+                              className="cell-input"
+                              value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f[field.key as keyof FinancialData])}
+                              onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
+                              onBlur={handleAutoSave}
+                              autoFocus
+                            />
+                          ) : (
+                            <span className="cell-display">
+                              {formatInputValue(f[field.key as keyof FinancialData]) || '-'}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                   ))}
