@@ -949,13 +949,18 @@ function CompanyDetail({
     return selectedCell?.id === id && selectedCell?.key === key;
   }, [selectedCell]);
 
-  // セルをクリックで選択
+  // セルをクリックまたはフォーカスで選択
   const handleCellSelect = useCallback((id: string, key: string) => {
     if (!isEditingCell(id, key)) {
       setSelectedCell({ id, key });
       setActiveEditCell(null);
     }
   }, [isEditingCell]);
+
+  // フォーカスが当たった時にセルを選択（Tab移動対応）
+  const handleCellFocus = useCallback((id: string, key: string) => {
+    setSelectedCell({ id, key });
+  }, []);
 
   // ダブルクリックで編集開始
   const startEditing = useCallback((id: string, key: string) => {
@@ -1207,6 +1212,7 @@ function CompanyDetail({
                               onClick={() => handleCellSelect(f.id!, field.key)}
                               onDoubleClick={() => startEditing(f.id!, field.key)}
                               onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                              onFocus={() => handleCellFocus(f.id!, field.key)}
                             >
                               {isEditingCell(f.id!, field.key) ? (
                                 <input
@@ -1234,6 +1240,7 @@ function CompanyDetail({
                           onClick={() => handleCellSelect(f.id!, field.key)}
                           onDoubleClick={() => startEditing(f.id!, field.key)}
                           onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                          onFocus={() => handleCellFocus(f.id!, field.key)}
                         >
                           {isEditingCell(f.id!, field.key) ? (
                             <textarea
@@ -1258,6 +1265,7 @@ function CompanyDetail({
                           onClick={() => handleCellSelect(f.id!, field.key)}
                           onDoubleClick={() => startEditing(f.id!, field.key)}
                           onKeyDown={(e) => handleCellKeyDown(e, f.id!, field.key)}
+                          onFocus={() => handleCellFocus(f.id!, field.key)}
                         >
                           {isEditingCell(f.id!, field.key) ? (
                             <input
