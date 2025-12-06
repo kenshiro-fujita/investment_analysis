@@ -962,6 +962,19 @@ function CompanyDetail({
     setSelectedCell({ id, key });
   }, []);
 
+  // 編集モード中のキー操作（Enterで編集終了して選択モードに戻る）
+  const handleInputKeyDown = useCallback((e: React.KeyboardEvent, id: string, key: string) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setActiveEditCell(null);
+      // セルのラッパーにフォーカスを戻す
+      setTimeout(() => {
+        const cellElement = document.querySelector(`[data-cell-id="${id}"][data-cell-key="${key}"]`) as HTMLElement;
+        cellElement?.focus();
+      }, 0);
+    }
+  }, []);
+
   // ダブルクリックで編集開始
   const startEditing = useCallback((id: string, key: string) => {
     setActiveEditCell({ id, key });
@@ -1221,6 +1234,7 @@ function CompanyDetail({
                                   value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f.stock_price_end)}
                                   onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
                                   onBlur={handleAutoSave}
+                                  onKeyDown={(e) => handleInputKeyDown(e, f.id!, field.key)}
                                   autoFocus
                                 />
                               ) : (
@@ -1274,6 +1288,7 @@ function CompanyDetail({
                               value={editingCell?.id === f.id && editingCell?.key === field.key ? editingCell.value : formatInputValue(f[field.key as keyof FinancialData])}
                               onChange={(e) => handleCellChange(f.id!, field.key, e.target.value.replace(/[^0-9.\-]/g, ''))}
                               onBlur={handleAutoSave}
+                              onKeyDown={(e) => handleInputKeyDown(e, f.id!, field.key)}
                               autoFocus
                             />
                           ) : (
